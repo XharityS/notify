@@ -12,6 +12,8 @@ application {
 dependencies {
     api(project(":core"))
     implementation(libs.logback)
+    implementation("io.ktor:ktor-server-websockets:${libs.versions.ktor.get()}")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation(libs.ktor.serverCore)
     implementation(libs.ktor.serverNetty)
     testImplementation(libs.ktor.serverTestHost)

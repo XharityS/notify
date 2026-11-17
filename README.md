@@ -1,28 +1,87 @@
-This is a Kotlin Multiplatform project targeting Android, Server.
+# Notify
 
-* [/app/shared](./app/shared/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-    - [commonMain](./app/shared/src/commonMain/kotlin) is for code that’s common for all targets.
-    - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-      For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-      the [iosMain](./app/shared/src/iosMain/kotlin) folder would be the right place for such calls.
-      Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./app/shared/src/jvmMain/kotlin)
-      folder is the appropriate location.
+Независимый Ktor-сервис доставки и Android-клиент на Compose. Без Firebase,
+БД, файловой истории и дисковой очереди. Сервер не зависит от Android:
+любой HTTP-клиент может отправлять, любой WebSocket-клиент — получать.
 
-* [/core](./core/src) is for the code that will be shared between all targets in the project.
-  The most important subfolder is [commonMain](./core/src/commonMain/kotlin). If preferred, you
-  can add code to the platform-specific folders here too.
+## Запуск
 
-* [/server](./server/src/main/kotlin) is for the Ktor server application.
+Используются версии Kotlin, Android SDK и Gradle из исходного проекта.
 
-### Running the apps
+```bash
+export NOTIFY_PUBLISH_KEY='replace-with-a-random-key-at-least-24-characters'
+export NOTIFY_RECIPIENTS='phone=replace-with-another-random-key-at-least-24-characters'
+export PORT=8080
+./gradlew :server:run
+./gradlew :app:androidApp:assembleDebug
+```
 
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and
-options:
+Несколько получателей: `phone=secret1,laptop=secret2`, каждый секрет минимум
+24 символа. ID для Android: латинские буквы, цифры, `_`, `-` (1–64 символа).
+Ключи задаются оператором; регистрации пользователей и управления аккаунтами нет.
+Перед сервером нужен HTTPS reverse proxy с поддержкой WebSocket Upgrade.
+Android-клиент принимает только HTTPS адрес. Не передавайте ключ отправки
+сторонним получателям: он разрешает отправлять любому настроенному ID.
 
-- Android app: `./gradlew :app:androidApp:assembleDebug`
-- Server: `./gradlew :server:run`
+## HTTP API v1
 
----
+`GET /health` возвращает `ok`.
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+```bash
+curl https://notify.example.org/api/v1/notifications \
+  -H "Authorization: Bearer $NOTIFY_PUBLISH_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"recipient":"phone","title":"Событие","body":"Задача завершена","style":"long"}'
+```
+
+Стили: `basic`, `long`, `progress` (неопределённый прогресс для демонстрации).
+Заголовок до 200 символов, тело до 4000, весь запрос до 16 KiB.
+Ответы: 202 `{"queued":true}`, 409 `{"queued":false}` (офлайн или полная
+очередь), 400 некорректный запрос, 401 неверный ключ, 413 слишком большой запрос.
+202 означает принятие в очередь соединения, а не подтверждение показа на экране.
+
+## WebSocket
+
+Подключение: `wss://notify.example.org/api/v1/stream/phone`, заголовок
+`Authorization: Bearer <ключ получателя>`. Одна сессия на ID. Сервер присылает
+текстовые JSON-кадры с `id`, `title`, `body`, `style`. Поддерживается ping/pong.
+Неверный ключ закрывает соединение кодом 1008, занятый ID — 1013.
+Обычный браузерный WebSocket не позволяет задавать Authorization: используйте
+клиент с поддержкой заголовков или свой доверенный промежуточный сервер.
+
+На каждую активную сессию выделена очередь 32 события в ОЗУ. При отключении
+она удаляется. Доставки офлайн, повторного воспроизведения, подтверждений и
+гарантии exactly-once нет. Перезапуск уничтожает всё временное состояние.
+Не запускайте несколько экземпляров за балансировщиком без маршрутизации
+по получателю: соединения находятся в памяти конкретного процесса.
+
+## Android
+
+Введите HTTPS адрес, ID и ключ получения, разрешите уведомления и нажмите
+«Подключить». Foreground service держит соединение и переподключается с
+задержкой 1–30 секунд. Постоянное уведомление означает активную службу,
+а не подтверждённое соединение. «Отключить» останавливает службу.
+
+Можно показать обычное уведомление, развёрнутый текст или прогресс локально,
+запланировать локальное уведомление через минуту либо отправить через сервер.
+Для отправки нужен отдельный ключ отправителя. Ключи клиент не сохраняет;
+после пересоздания экрана их нужно ввести снова.
+
+Отложенный вызов использует неточный AlarmManager: Android может задержать
+его в режиме энергосбережения. После перезагрузки устройства расписание
+теряется. Принудительная остановка приложения прекращает доставку до нового
+запуска и подключения. Doze и ограничения производителя могут задерживать
+сеть. Служба использует тип specialUse; при публикации в магазине потребуется
+обоснование такого фонового использования. Это самостоятельная доставка по
+WebSocket, не системная push-инфраструктура с гарантированным пробуждением.
+
+## Проверка
+
+```bash
+./gradlew :server:compileKotlin :app:androidApp:assembleDebug
+```
+
+На устройстве проверьте разрешение уведомлений, подключение, отправку curl,
+три стиля, локальный таймер и восстановление после смены сети. В среде
+подготовки изменений сборка была заблокирована отсутствием сетевого доступа
+к services.gradle.org; компиляция и проверка на Android не подтверждены.

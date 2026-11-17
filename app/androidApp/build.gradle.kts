@@ -12,6 +12,11 @@ kotlin {
 }
 dependencies {
     implementation(project(":app:shared"))
+    implementation(libs.compose.material3)
+    implementation(libs.compose.foundation)
+    implementation("io.ktor:ktor-client-cio:${libs.versions.ktor.get()}")
+    implementation("io.ktor:ktor-client-websockets:${libs.versions.ktor.get()}")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     implementation(libs.androidx.activity.compose)
 

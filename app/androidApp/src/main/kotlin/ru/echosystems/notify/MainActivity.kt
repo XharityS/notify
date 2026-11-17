@@ -30,7 +30,6 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent {
             MaterialTheme {
-                var url by remember { mutableStateOf("https://") }
                 var recipient by remember { mutableStateOf("phone") }
                 var receiveKey by remember { mutableStateOf("") }
                 var publishKey by remember { mutableStateOf("") }
@@ -40,24 +39,21 @@ class MainActivity : ComponentActivity() {
                 var status by remember { mutableStateOf("Не подключено") }
                 var busy by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
-                val client = remember { HttpClient(CIO) }
+                val client = remember { HttpClient(CIO) { followRedirects = false } }
                 DisposableEffect(Unit) { onDispose { client.close() } }
-                fun valid(): Boolean {
-                    val parsed = runCatching { Url(url) }.getOrNull()
-                    return parsed != null && parsed.host.isNotBlank() && parsed.protocol.name == "https" && recipient.matches(Regex("[a-zA-Z0-9_-]{1,64}"))
-                }
+                fun valid(): Boolean = recipient.matches(Regex("[a-zA-Z0-9_-]{1,64}"))
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Notify", style = MaterialTheme.typography.headlineLarge)
                         Text("Удалённые и локальные уведомления")
-                        OutlinedTextField(url, { url = it }, label = { Text("HTTPS адрес сервера") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        Text(NotifyEndpoint.HTTPS, style = MaterialTheme.typography.bodyMedium)
                         OutlinedTextField(recipient, { recipient = it }, label = { Text("Получатель") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                         OutlinedTextField(receiveKey, { receiveKey = it }, label = { Text("Ключ получения") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = {
-                                if (!valid() || receiveKey.length < 24) status = "Укажи HTTPS сервер, ID и ключ от 24 символов"
+                                if (!valid() || receiveKey.length < 24) status = "Укажи ID и ключ от 24 символов"
                                 else {
-                                    val intent = Intent(this@MainActivity, NotifyService::class.java).putExtra("url", url).putExtra("recipient", recipient).putExtra("key", receiveKey)
+                                    val intent = Intent(this@MainActivity, NotifyService::class.java).putExtra("recipient", recipient).putExtra("key", receiveKey)
                                     if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
                                     status = "Служба запущена; при обрыве соединение восстанавливается"
                                 }
@@ -82,11 +78,11 @@ class MainActivity : ComponentActivity() {
                         }) { Text("Локально через минуту") }
                         OutlinedTextField(publishKey, { publishKey = it }, label = { Text("Ключ отправки (для удалённых)") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
                         Button(enabled = !busy && title.isNotBlank(), onClick = {
-                            if (!valid() || publishKey.length < 24) status = "Проверь адрес сервера и ключ отправки"
+                            if (!valid() || publishKey.length < 24) status = "Проверь ID и ключ отправки"
                             else scope.launch {
                                 busy = true
                                 try {
-                                    val response = client.post(url.trimEnd('/') + "/api/v1/notifications") {
+                                    val response = client.post(NotifyEndpoint.HTTPS + "/api/v1/notifications") {
                                         header(HttpHeaders.Authorization, "Bearer $publishKey")
                                         contentType(ContentType.Application.Json)
                                         setBody(buildJsonObject { put("recipient", recipient); put("title", title); put("body", body); put("style", style) }.toString())

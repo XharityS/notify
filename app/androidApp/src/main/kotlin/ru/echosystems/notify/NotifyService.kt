@@ -31,20 +31,20 @@ fun showNotification(context: android.content.Context, title: String, body: Stri
 
 class NotifyService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val client = HttpClient(CIO) { install(WebSockets) { pingIntervalMillis = 20000 } }
+    private val client = HttpClient(CIO) { followRedirects = false; install(WebSockets) { pingIntervalMillis = 20000 } }
     private var connection: Job? = null
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(1, showNotification(this, "Notify", "Служба доставки активна", id = 1))
         connection?.cancel()
-        val url = intent?.getStringExtra("url") ?: return START_NOT_STICKY
-        val recipient = intent.getStringExtra("recipient") ?: return START_NOT_STICKY
+        val recipient = intent?.getStringExtra("recipient") ?: return START_NOT_STICKY
+        if (!recipient.matches(Regex("[a-zA-Z0-9_-]{1,64}"))) return START_NOT_STICKY
         val key = intent.getStringExtra("key") ?: return START_NOT_STICKY
         connection = scope.launch {
             var retry = 1000L
             while (isActive) {
                 try {
-                    client.webSocket(urlString = url.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://").trimEnd('/') + "/api/v1/stream/$recipient", request = { header("Authorization", "Bearer $key") }) {
+                    client.webSocket(urlString = NotifyEndpoint.WSS + "/api/v1/stream/$recipient", request = { header("Authorization", "Bearer $key") }) {
                         retry = 1000L
                         for (frame in incoming) if (frame is Frame.Text) {
                             val event = Json.parseToJsonElement(frame.readText()).jsonObject

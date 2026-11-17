@@ -20,7 +20,7 @@ export PORT=8080
 24 символа. ID для Android: латинские буквы, цифры, `_`, `-` (1–64 символа).
 Ключи задаются оператором; регистрации пользователей и управления аккаунтами нет.
 Перед сервером нужен HTTPS reverse proxy с поддержкой WebSocket Upgrade.
-Android-клиент принимает только HTTPS адрес. Не передавайте ключ отправки
+Android-клиент использует фиксированный адрес https://notify.echosystems.ru (WSS для получения); смена адреса в интерфейсе недоступна. Не передавайте ключ отправки
 сторонним получателям: он разрешает отправлять любому настроенному ID.
 
 ## HTTP API v1
@@ -28,7 +28,7 @@ Android-клиент принимает только HTTPS адрес. Не пе
 `GET /health` возвращает `ok`.
 
 ```bash
-curl https://notify.example.org/api/v1/notifications \
+curl https://notify.echosystems.ru/api/v1/notifications \
   -H "Authorization: Bearer $NOTIFY_PUBLISH_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"recipient":"phone","title":"Событие","body":"Задача завершена","style":"long"}'
@@ -42,7 +42,7 @@ curl https://notify.example.org/api/v1/notifications \
 
 ## WebSocket
 
-Подключение: `wss://notify.example.org/api/v1/stream/phone`, заголовок
+Подключение: `wss://notify.echosystems.ru/api/v1/stream/phone`, заголовок
 `Authorization: Bearer <ключ получателя>`. Одна сессия на ID. Сервер присылает
 текстовые JSON-кадры с `id`, `title`, `body`, `style`. Поддерживается ping/pong.
 Неверный ключ закрывает соединение кодом 1008, занятый ID — 1013.
@@ -57,7 +57,7 @@ curl https://notify.example.org/api/v1/notifications \
 
 ## Android
 
-Введите HTTPS адрес, ID и ключ получения, разрешите уведомления и нажмите
+Введите ID и ключ получения, разрешите уведомления и нажмите
 «Подключить». Foreground service держит соединение и переподключается с
 задержкой 1–30 секунд. Постоянное уведомление означает активную службу,
 а не подтверждённое соединение. «Отключить» останавливает службу.
